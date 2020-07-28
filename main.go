@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-lambda-go/lambda"
 
@@ -15,6 +16,8 @@ import (
 
 var (
 	awsRegion = os.Getenv("AWS_REGION")
+	tagKey    = os.Getenv("TAG_KEY")
+	tagValues = os.Getenv("TAG_VALUES")
 )
 
 // HandleRequest handles lambda requests
@@ -30,10 +33,28 @@ func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
 	// Create new EC2 client
 	svc := ec2.New(sess)
 
+	// format environment variables
+	tagKey = "tag:" + strings.TrimSpace(tagKey)
+	tagValueSlice := []string{}
+	for _, v := range strings.Split(tagValues, ";") {
+		tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
+	}
+	// debug
+
+	fmt.Printf("[%v]\n", tagKey)
+
+	for _, v := range tagValueSlice {
+		fmt.Printf("[%v]\n", v)
+	}
 	// retrive values
 	input := &ec2.DescribeImagesInput{
 		Owners: []*string{
 			aws.String("self"),
+		}, Filters: []*ec2.Filter{
+			&ec2.Filter{
+				Name:   aws.String(tagKey),
+				Values: aws.StringSlice(tagValueSlice),
+			},
 		},
 	}
 	ami, err := svc.DescribeImages(input)
