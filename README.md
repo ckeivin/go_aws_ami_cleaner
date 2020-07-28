@@ -6,7 +6,7 @@
 - [x] pick up environment variables from lambda console into Go 
 ### code logic
 - [x] filter AMI images based on "self" tag 
-- [ ] filter AMI images based on tag key name and values
+- [x] filter AMI images based on tag key name and values
 - [ ] check age of AMI based on DAYS_OLD variable
 - [ ] compare and exclude AMIs used in launch configurations
 - [ ] based on final list of AMIs, get respective snapshot IDs
