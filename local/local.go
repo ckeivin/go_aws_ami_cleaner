@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -22,6 +24,7 @@ var (
 	export AWS_REGION="ap-southeast-1"
 	export TAG_KEY="name"
 	export TAG_VALUES=" redhat6-base   ;  redhat7-base "
+	export AMI_AGE="15"
 */
 )
 
@@ -39,27 +42,75 @@ func main() {
 	svc := ec2.New(sess)
 	// get tags
 	tagKey, tagValues := getTags()
+	amiAge := getAmiAge()
+
 	// format inputs
-	input := formatInput(tagKey, tagValues)
+	input := formatInput(tagKey, tagValues, amiAge)
 	ami, err := svc.DescribeImages(input)
 	if err != nil {
 		fmt.Println("there was an error listing instances in", err.Error())
 		log.Fatal(err.Error())
 	}
 
-	fmt.Println("type is", reflect.TypeOf(ami))
+	//fmt.Println("type is", reflect.TypeOf(ami))
 
-	// get all names and ids
-	imageMap := map[string]map[string]string{}
+	// // get all names and ids
+	// imageMap := map[string]map[string]string{}
 
+	// for _, v1 := range ami.Images {
+	// 	imageMap[*v1.ImageId] = map[string]string{}
+	// 	for _, v2 := range v1.BlockDeviceMappings {
+	// 		imageMap[*v1.ImageId][*v2.DeviceName] = *v2.Ebs.SnapshotId
+	// 	}
+	// }
+	// get AMI to snapshots mapping
+	snapshotsMap := getSnapshots(ami)
+	fmt.Printf("%+v\n", snapshotsMap)
+
+	// testing zone
+	// getTime := time.Now().Format(time.RFC3339)
+	getTime := time.Now()
+
+	fmt.Println(getTime)
+
+	sampleDate := "2020-02-06T08:00:39.000Z"
+	sampleDateFmt, err := time.Parse(time.RFC3339, sampleDate)
+	if err != nil {
+		panic(err)
+	}
+	//sampleDateFmt := sampleDate.Format(time.RFC3339)
+	fmt.Println(sampleDateFmt.Format(time.RFC3339))
+	fmt.Println(reflect.TypeOf(sampleDateFmt))
+	daysDiff := getTime.Sub(sampleDateFmt)
+	fmt.Println(daysDiff.Hours() / 24)
+	fmt.Println(int(daysDiff.Hours() / 24))
+
+}
+
+// getSnapshots gets all AMI Ids and respective snapshot Ids
+func getSnapshots(ami *ec2.DescribeImagesOutput) (snapshotsMap map[string]map[string]string) {
+	snapshotsMap = map[string]map[string]string{}
 	for _, v1 := range ami.Images {
-		imageMap[*v1.ImageId] = map[string]string{}
+		snapshotsMap[*v1.ImageId] = map[string]string{}
 		for _, v2 := range v1.BlockDeviceMappings {
-			imageMap[*v1.ImageId][*v2.DeviceName] = *v2.Ebs.SnapshotId
+			snapshotsMap[*v1.ImageId][*v2.DeviceName] = *v2.Ebs.SnapshotId
 		}
 	}
-	fmt.Printf("%+v", imageMap)
+	return
+}
 
+func getAmiAge() (amiAge int) {
+
+	amiAge, err := strconv.Atoi(os.Getenv("AMI_AGE"))
+	if err != nil {
+		fmt.Println("'AMI_AGE' is not set. Default value of '14' is used")
+		amiAge = 14
+	} else {
+
+		fmt.Printf("'AMI_AGE' value of '%d' is set\n", amiAge)
+	}
+	println()
+	return
 }
 func getTags() (tagKey, tagValues string) {
 
@@ -83,7 +134,7 @@ func getTags() (tagKey, tagValues string) {
 }
 
 // formatInput formats based on the tag key and values
-func formatInput(tagKey, tagValues string) (input *ec2.DescribeImagesInput) {
+func formatInput(tagKey, tagValues string, amiAge int) (input *ec2.DescribeImagesInput) {
 	// format environment variables
 	tagKey = "tag:" + strings.TrimSpace(tagKey)
 	tagValueSlice := []string{}
@@ -91,10 +142,12 @@ func formatInput(tagKey, tagValues string) (input *ec2.DescribeImagesInput) {
 		tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
 	}
 	// debug
+	fmt.Println("Filter options:")
 	fmt.Printf("tagKey: [%v]\n", tagKey)
 	for i, v := range tagValueSlice {
 		fmt.Printf("tagValues[%d]:[%v]\n", i, v)
 	}
+	fmt.Printf("amiAge: [%d]\n\n", amiAge)
 	// format inputs
 	input = &ec2.DescribeImagesInput{
 		Owners: []*string{
