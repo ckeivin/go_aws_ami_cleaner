@@ -16,13 +16,14 @@ import (
 
 var (
 	awsRegion = os.Getenv("AWS_REGION")
-	tagKey    = os.Getenv("TAG_KEY")
-	tagValues = os.Getenv("TAG_VALUES")
+
+// tagKey    = os.Getenv("TAG_KEY")
+// tagValues = os.Getenv("TAG_VALUES")
 )
 
 // HandleRequest handles lambda requests
 func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
-	fmt.Printf("Configured region is [%v]", awsRegion)
+	fmt.Printf("Configured region is [%v]\n", awsRegion)
 
 	// Create Lambda service client
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
@@ -32,31 +33,10 @@ func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
 
 	// Create new EC2 client
 	svc := ec2.New(sess)
-
-	// format environment variables
-	tagKey = "tag:" + strings.TrimSpace(tagKey)
-	tagValueSlice := []string{}
-	for _, v := range strings.Split(tagValues, ";") {
-		tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
-	}
-	// debug
-
-	fmt.Printf("[%v]\n", tagKey)
-
-	for _, v := range tagValueSlice {
-		fmt.Printf("[%v]\n", v)
-	}
-	// retrive values
-	input := &ec2.DescribeImagesInput{
-		Owners: []*string{
-			aws.String("self"),
-		}, Filters: []*ec2.Filter{
-			&ec2.Filter{
-				Name:   aws.String(tagKey),
-				Values: aws.StringSlice(tagValueSlice),
-			},
-		},
-	}
+	// get tags
+	tagKey, tagValues := getTags()
+	// format inputs
+	input := formatInput(tagKey, tagValues)
 	ami, err := svc.DescribeImages(input)
 	if err != nil {
 		fmt.Println("there was an error listing instances in", err.Error())
@@ -78,4 +58,52 @@ func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
 func main() {
 	lambda.Start(HandleRequest)
 
+}
+
+func getTags() (tagKey, tagValues string) {
+
+	tagKey = os.Getenv("TAG_KEY")
+	if len(tagKey) == 0 {
+		fmt.Println()
+		fmt.Println("'TAG_KEY' is not set. Default value of 'name' is used")
+		tagKey = "name"
+	} else {
+		fmt.Printf("'TAG_KEY' of [%v] is set\n", tagKey)
+	}
+	tagValues = os.Getenv("TAG_VALUES")
+	if len(tagValues) == 0 {
+		fmt.Println()
+		fmt.Println("'TAG_VALUES' is not set. Default value of 'windows2016-base' is used")
+		tagValues = "windows2016-base"
+	} else {
+		fmt.Printf("'TAG_VALUES' of [%v] is set\n", tagValues)
+	}
+	return
+}
+
+// formatInput formats based on the tag key and values
+func formatInput(tagKey, tagValues string) (input *ec2.DescribeImagesInput) {
+	// format environment variables
+	tagKey = "tag:" + strings.TrimSpace(tagKey)
+	tagValueSlice := []string{}
+	for _, v := range strings.Split(tagValues, ";") {
+		tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
+	}
+	// debug
+	fmt.Printf("tagKey: [%v]\n", tagKey)
+	for i, v := range tagValueSlice {
+		fmt.Printf("tagValues[%d]:[%v]\n", i, v)
+	}
+	// format inputs
+	input = &ec2.DescribeImagesInput{
+		Owners: []*string{
+			aws.String("self"),
+		}, Filters: []*ec2.Filter{
+			&ec2.Filter{
+				Name:   aws.String(tagKey),
+				Values: aws.StringSlice(tagValueSlice),
+			},
+		},
+	}
+	return
 }
