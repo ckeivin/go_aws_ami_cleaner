@@ -5,6 +5,7 @@
 - [ ] pick up AWS session from lambda
 - [x] pick up environment variables from lambda console into Go 
 ### code logic
+- [x] check for tags and set default values
 - [x] filter AMI images based on "self" tag 
 - [x] filter AMI images based on tag key name and values
 - [ ] check age of AMI based on DAYS_OLD variable
@@ -20,3 +21,6 @@ https://docs.aws.amazon.com/lambda/latest/dg/golang-handler.html
 ## Remember to build your handler executable for Linux!
 GOOS=linux GOARCH=amd64 go build -o main main.go
 zip main.zip main
+
+## time format 
+AWS uses ISO-8601 format 
