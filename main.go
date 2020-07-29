@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -35,29 +36,48 @@ func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
 	svc := ec2.New(sess)
 	// get tags
 	tagKey, tagValues := getTags()
+	amiAge := getAmiAge()
 	// format inputs
-	input := formatInput(tagKey, tagValues)
+	input := formatInput(tagKey, tagValues, amiAge)
 	ami, err := svc.DescribeImages(input)
 	if err != nil {
 		fmt.Println("there was an error listing instances in", err.Error())
 		log.Fatal(err.Error())
 	}
 
-	// get all names and ids
-	imageMap := map[string]map[string]string{}
-
-	for _, v1 := range ami.Images {
-		imageMap[*v1.ImageId] = map[string]string{}
-		for _, v2 := range v1.BlockDeviceMappings {
-			imageMap[*v1.ImageId][*v2.DeviceName] = *v2.Ebs.SnapshotId
-		}
-	}
-	fmt.Printf("%+v", imageMap)
-	return imageMap, nil
+	// get AMI to snapshots mapping
+	snapshotsMap := getSnapshots(ami)
+	fmt.Printf("%+v", snapshotsMap)
+	return snapshotsMap, nil
 }
 func main() {
 	lambda.Start(HandleRequest)
 
+}
+
+// getSnapshots gets all AMI Ids and respective snapshot Ids
+func getSnapshots(ami *ec2.DescribeImagesOutput) (snapshotsMap map[string]map[string]string) {
+	snapshotsMap = map[string]map[string]string{}
+	for _, v1 := range ami.Images {
+		snapshotsMap[*v1.ImageId] = map[string]string{}
+		for _, v2 := range v1.BlockDeviceMappings {
+			snapshotsMap[*v1.ImageId][*v2.DeviceName] = *v2.Ebs.SnapshotId
+		}
+	}
+	return
+}
+func getAmiAge() (amiAge int) {
+
+	amiAge, err := strconv.Atoi(os.Getenv("AMI_AGE"))
+	if err != nil {
+		fmt.Println("'AMI_AGE' is not set. Default value of '14' is used")
+		amiAge = 14
+	} else {
+
+		fmt.Printf("'AMI_AGE' value of '%d' is set\n", amiAge)
+	}
+	println()
+	return
 }
 
 func getTags() (tagKey, tagValues string) {
@@ -70,6 +90,7 @@ func getTags() (tagKey, tagValues string) {
 	} else {
 		fmt.Printf("'TAG_KEY' of [%v] is set\n", tagKey)
 	}
+
 	tagValues = os.Getenv("TAG_VALUES")
 	if len(tagValues) == 0 {
 		fmt.Println()
@@ -78,11 +99,12 @@ func getTags() (tagKey, tagValues string) {
 	} else {
 		fmt.Printf("'TAG_VALUES' of [%v] is set\n", tagValues)
 	}
+
 	return
 }
 
 // formatInput formats based on the tag key and values
-func formatInput(tagKey, tagValues string) (input *ec2.DescribeImagesInput) {
+func formatInput(tagKey, tagValues string, amiAge int) (input *ec2.DescribeImagesInput) {
 	// format environment variables
 	tagKey = "tag:" + strings.TrimSpace(tagKey)
 	tagValueSlice := []string{}
@@ -90,10 +112,12 @@ func formatInput(tagKey, tagValues string) (input *ec2.DescribeImagesInput) {
 		tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
 	}
 	// debug
+	fmt.Println("Filter options:")
 	fmt.Printf("tagKey: [%v]\n", tagKey)
 	for i, v := range tagValueSlice {
 		fmt.Printf("tagValues[%d]:[%v]\n", i, v)
 	}
+	fmt.Printf("amiAge: [%d]\n\n", amiAge)
 	// format inputs
 	input = &ec2.DescribeImagesInput{
 		Owners: []*string{
