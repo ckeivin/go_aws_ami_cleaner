@@ -17,9 +17,6 @@ import (
 
 var (
 	awsRegion = os.Getenv("AWS_REGION")
-
-// tagKey    = os.Getenv("TAG_KEY")
-// tagValues = os.Getenv("TAG_VALUES")
 )
 
 // HandleRequest handles lambda requests
