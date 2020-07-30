@@ -1,16 +1,23 @@
 # go_aws_ami_cleaner
 ## Lambda Environment Variables
 
+### Multiple Tags AMI Filtering
+- use the "AmiTag_\<name\>" as tag key name 
+- e.g. if the tagging filter requirements are 
+"Name":"Web" and "Solution":"IIS" and "Solution":"Logging", then it should be set as the following:
+```bash
+"AmiTag_Name" : "web",
+"AmiTag_Solution" : "IIS;Logging"
+```
+
 key|default value|Description
 -|-|-|
-TAG_KEY|name|Name of the tag key
-TAG_VALUE|windows2016-base-|String prefix to be matched. For multiple values, use the ";" as delimiter (e.g. 'windows-2016-base;redhat-7-base')
 AMI_AGE|14|Number of days since the creation of the AMI 
 DRY_RUN|none| Whether to run the script in test mode.<br> `True` - will procceed with test mode <br> `False` - **will DELETE AMIs and Snapshots !**
 
 ## challenges
 ### lambda
-- [ ] pick up AWS session from lambda
+- [x] pick up AWS session from lambda
 - [x] pick up environment variables from lambda console into Go 
 ### code logic
 - [x] check for tags and set default values
@@ -22,7 +29,7 @@ DRY_RUN|none| Whether to run the script in test mode.<br> `True` - will procceed
 - [x] based on final list of AMIs, get respective snapshot IDs
 
 ### additional features
-- [ ] multiple tag keys and values filtering via "envSlice := os.Environ()"
+- [x] multiple tag keys and values filtering via "envSlice := os.Environ()"
 
 ## Useful links
 https://docs.aws.amazon.com/lambda/latest/dg/golang-envvars.html 
