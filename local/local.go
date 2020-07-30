@@ -29,21 +29,24 @@ var (
 
 // HandleRequest handles lambda requests
 func main() {
-	fmt.Printf("Configured region is [%v]\n", awsRegion)
 
 	// Create Lambda service client
 	sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 	}))
-	// client := lambda.New(sess, &aws.Config{Region: aws.String(awsRegion)})
 
 	// Create new EC2 client
 	svc := ec2.New(sess)
-	// get tags
+	// get environment vars
+	fmt.Println("## Environment Variables ##")
+	fmt.Printf("'AWS_REGION' is set to [%v]\n", awsRegion)
 	tagKey, tagValues := getTags()
 	amiAge := getAmiAge()
 
 	// format inputs
+	// debug
+	fmt.Println("## AMI Filters ##")
+	fmt.Printf("tagKey: [%v]\n", tagKey)
 	input := formatInput(tagKey, tagValues, amiAge)
 	ami, err := svc.DescribeImages(input)
 	if err != nil {
@@ -52,41 +55,54 @@ func main() {
 	}
 	// get AMI creation time
 	creationDatesMap := getAmiAgeMap(ami)
-	fmt.Printf("%v\n", creationDatesMap)
+	// fmt.Printf("%v\n", creationDatesMap)
 	// get AMI to snapshots mapping
 	snapshotsMap := getSnapshotMap(ami)
-	fmt.Printf("%+v\n", snapshotsMap)
+	// fmt.Printf("%+v\n", snapshotsMap)
 	// get finalSnapshots
-	finalSnapshot := getFinalSnapshotMap(amiAge, creationDatesMap, snapshotsMap)
-	fmt.Printf("finalSnapshot: %+v\n", finalSnapshot)
+	finalSnapshotMap := getFinalSnapshotMap(amiAge, creationDatesMap, snapshotsMap)
+	// fmt.Printf("finalSnapshot: %+v\n", finalSnapshotMap)
 	// summary
-	fmt.Printf("Total AMIs: %v\n", len(finalSnapshot))
+	fmt.Println("## Summary ##")
+	fmt.Printf("Total AMIs: %v\n", len(finalSnapshotMap))
 	totalSnapshots := 0
-	for _, v1 := range finalSnapshot {
+	for _, v1 := range finalSnapshotMap {
 		for range v1 {
 			totalSnapshots++
 		}
 	}
 	fmt.Printf("Total Snapshots: %v\n", totalSnapshots)
 
-	// testing zone
-	// getTime := time.Now().Format(time.RFC3339)
-	// getTime := time.Now()
+	// deregister image
+	fmt.Println("## Running Deregister Jobs ##")
+	deregisterAMI(svc, finalSnapshotMap, true)
 
-	// fmt.Println(getTime)
+}
 
-	// sampleDate := "2020-02-06T08:00:39.000Z"
-	// sampleDateFmt, err := time.Parse(time.RFC3339, sampleDate)
-	// if err != nil {
-	// 	panic(err)
-	// }
+func deregisterAMI(svc *ec2.EC2, getFinalSnapshotMap map[string]map[string]string, dryRun bool) {
 
-	// fmt.Println(sampleDateFmt.Format(time.RFC3339))
-	// fmt.Println(reflect.TypeOf(sampleDateFmt))
-	// daysDiff := getTime.Sub(sampleDateFmt)
-	// fmt.Println(daysDiff.Hours() / 24)
-	// fmt.Println(int(daysDiff.Hours() / 24))
+	for i := range getFinalSnapshotMap {
+		// create inputs
+		imageInput := &ec2.DeregisterImageInput{
+			DryRun:  &dryRun,
+			ImageId: aws.String(i),
+		}
+		// fmt.Println(imageInput)
+		// deregister
+		_, err := svc.DeregisterImage(imageInput)
+		if err != nil {
+			fmt.Printf("[%v] - '%v'\n", *imageInput.ImageId, err.Error())
+			if strings.Contains(err.Error(), "DryRunOperation") {
+				continue
+			} else {
+				log.Fatal(err.Error())
+			}
+		}
+		// println()
+		// fmt.Println(deregister)
+	}
 
+	return
 }
 func getFinalSnapshotMap(amiAge int, creationMap map[string]int, snapshotsMap map[string]map[string]string) (finalSnapshotMap map[string]map[string]string) {
 	finalSnapshotMap = snapshotsMap
@@ -145,7 +161,6 @@ func getTags() (tagKey, tagValues string) {
 
 	tagKey = os.Getenv("TAG_KEY")
 	if len(tagKey) == 0 {
-		fmt.Println()
 		fmt.Println("'TAG_KEY' is not set. Default value of 'name' is used")
 		tagKey = "name"
 	} else {
@@ -153,7 +168,6 @@ func getTags() (tagKey, tagValues string) {
 	}
 	tagValues = os.Getenv("TAG_VALUES")
 	if len(tagValues) == 0 {
-		fmt.Println()
 		fmt.Println("'TAG_VALUES' is not set. Default value of 'windows2016-base' is used")
 		tagValues = "windows2016-base"
 	} else {
@@ -170,9 +184,6 @@ func formatInput(tagKey, tagValues string, amiAge int) (input *ec2.DescribeImage
 	for _, v := range strings.Split(tagValues, ";") {
 		tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
 	}
-	// debug
-	fmt.Println("Filter options:")
-	fmt.Printf("tagKey: [%v]\n", tagKey)
 	for i, v := range tagValueSlice {
 		fmt.Printf("tagValues[%d]:[%v]\n", i, v)
 	}
