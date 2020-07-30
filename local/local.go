@@ -24,6 +24,7 @@ var (
 	export TAG_KEY="name"
 	export TAG_VALUES=" redhat6-base   ;  redhat7-base "
 	export AMI_AGE="15"
+	export DRY_RUN=true
 */
 )
 
@@ -40,7 +41,7 @@ func main() {
 	// get environment vars
 	fmt.Println("## Environment Variables ##")
 	fmt.Printf("'AWS_REGION' is set to [%v]\n", awsRegion)
-	tagKey, tagValues := getTags()
+	tagKey, tagValues, dryRun := getTags()
 	amiAge := getAmiAge()
 
 	// format inputs
@@ -55,13 +56,13 @@ func main() {
 	}
 	// get AMI creation time
 	creationDatesMap := getAmiAgeMap(ami)
-	// fmt.Printf("%v\n", creationDatesMap)
+
 	// get AMI to snapshots mapping
 	snapshotsMap := getSnapshotMap(ami)
-	// fmt.Printf("%+v\n", snapshotsMap)
+
 	// get finalSnapshots
 	finalSnapshotMap := getFinalSnapshotMap(amiAge, creationDatesMap, snapshotsMap)
-	// fmt.Printf("finalSnapshot: %+v\n", finalSnapshotMap)
+
 	// summary
 	fmt.Println("## Summary ##")
 	fmt.Printf("Total AMIs: %v\n", len(finalSnapshotMap))
@@ -75,7 +76,7 @@ func main() {
 
 	// deregister image
 	fmt.Println("## Running Deregister Jobs ##")
-	deregisterAMI(svc, finalSnapshotMap, true)
+	deregisterAMI(svc, finalSnapshotMap, dryRun)
 
 }
 
@@ -157,7 +158,7 @@ func getAmiAge() (amiAge int) {
 	println()
 	return
 }
-func getTags() (tagKey, tagValues string) {
+func getTags() (tagKey, tagValues string, dryRun bool) {
 
 	tagKey = os.Getenv("TAG_KEY")
 	if len(tagKey) == 0 {
@@ -173,6 +174,14 @@ func getTags() (tagKey, tagValues string) {
 	} else {
 		fmt.Printf("'TAG_VALUES' of [%v] is set\n", tagValues)
 	}
+
+	dryRun, err := strconv.ParseBool(os.Getenv("DRY_RUN"))
+	if err != nil {
+		log.Fatal("'DRY_RUN' value is invalid. Valid entries are 'true' or 'false'\n", err.Error())
+	} else {
+		fmt.Printf("'DRY_RUN' of [%v] is set\n", dryRun)
+	}
+
 	return
 }
 
