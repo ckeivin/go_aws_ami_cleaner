@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -51,45 +50,75 @@ func main() {
 		fmt.Println("there was an error listing instances in", err.Error())
 		log.Fatal(err.Error())
 	}
-
-	//fmt.Println("type is", reflect.TypeOf(ami))
-
-	// // get all names and ids
-	// imageMap := map[string]map[string]string{}
-
-	// for _, v1 := range ami.Images {
-	// 	imageMap[*v1.ImageId] = map[string]string{}
-	// 	for _, v2 := range v1.BlockDeviceMappings {
-	// 		imageMap[*v1.ImageId][*v2.DeviceName] = *v2.Ebs.SnapshotId
-	// 	}
-	// }
+	// get AMI creation time
+	creationDatesMap := getAmiAgeMap(ami)
+	fmt.Printf("%v\n", creationDatesMap)
 	// get AMI to snapshots mapping
-	snapshotsMap := getSnapshots(ami)
+	snapshotsMap := getSnapshotMap(ami)
 	fmt.Printf("%+v\n", snapshotsMap)
+	// get finalSnapshots
+	finalSnapshot := getFinalSnapshotMap(amiAge, creationDatesMap, snapshotsMap)
+	fmt.Printf("finalSnapshot: %+v\n", finalSnapshot)
+	// summary
+	fmt.Printf("Total AMIs: %v\n", len(finalSnapshot))
+	totalSnapshots := 0
+	for _, v1 := range finalSnapshot {
+		for range v1 {
+			totalSnapshots++
+		}
+	}
+	fmt.Printf("Total Snapshots: %v\n", totalSnapshots)
 
 	// testing zone
 	// getTime := time.Now().Format(time.RFC3339)
-	getTime := time.Now()
+	// getTime := time.Now()
 
-	fmt.Println(getTime)
+	// fmt.Println(getTime)
 
-	sampleDate := "2020-02-06T08:00:39.000Z"
-	sampleDateFmt, err := time.Parse(time.RFC3339, sampleDate)
-	if err != nil {
-		panic(err)
-	}
-	//sampleDateFmt := sampleDate.Format(time.RFC3339)
-	fmt.Println(sampleDateFmt.Format(time.RFC3339))
-	fmt.Println(reflect.TypeOf(sampleDateFmt))
-	daysDiff := getTime.Sub(sampleDateFmt)
-	fmt.Println(daysDiff.Hours() / 24)
-	fmt.Println(int(daysDiff.Hours() / 24))
+	// sampleDate := "2020-02-06T08:00:39.000Z"
+	// sampleDateFmt, err := time.Parse(time.RFC3339, sampleDate)
+	// if err != nil {
+	// 	panic(err)
+	// }
+
+	// fmt.Println(sampleDateFmt.Format(time.RFC3339))
+	// fmt.Println(reflect.TypeOf(sampleDateFmt))
+	// daysDiff := getTime.Sub(sampleDateFmt)
+	// fmt.Println(daysDiff.Hours() / 24)
+	// fmt.Println(int(daysDiff.Hours() / 24))
 
 }
+func getFinalSnapshotMap(amiAge int, creationMap map[string]int, snapshotsMap map[string]map[string]string) (finalSnapshotMap map[string]map[string]string) {
+	finalSnapshotMap = snapshotsMap
+	for i, v := range creationMap {
+		if v < amiAge {
+			delete(finalSnapshotMap, i)
+		}
+	}
+	return
+}
+func getAmiAgeMap(ami *ec2.DescribeImagesOutput) (creationMap map[string]int) {
 
-// getSnapshots gets all AMI Ids and respective snapshot Ids
-func getSnapshots(ami *ec2.DescribeImagesOutput) (snapshotsMap map[string]map[string]string) {
+	creationMap = map[string]int{}
+	getTime := time.Now()
+
+	for _, v1 := range ami.Images {
+
+		creationTime, err := time.Parse(time.RFC3339, *v1.CreationDate)
+		if err != nil {
+			panic(err)
+		}
+		daysDiff := int(getTime.Sub(creationTime).Hours() / 24)
+		creationMap[*v1.ImageId] = daysDiff
+	}
+
+	return
+}
+
+// getSnapshotMap gets all AMI Ids and respective snapshot Ids
+func getSnapshotMap(ami *ec2.DescribeImagesOutput) (snapshotsMap map[string]map[string]string) {
 	snapshotsMap = map[string]map[string]string{}
+
 	for _, v1 := range ami.Images {
 		snapshotsMap[*v1.ImageId] = map[string]string{}
 		for _, v2 := range v1.BlockDeviceMappings {
