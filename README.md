@@ -1,12 +1,12 @@
 # go_aws_ami_cleaner
 ## Lambda Environment Variables
 
-key|value|Description
+key|default value|Description
 -|-|-|
 TAG_KEY|name|Name of the tag key
-TAG_VALUE|windows2016-base-|Name of the tag value. Script checks the value that begins with this string 
+TAG_VALUE|windows2016-base-|String prefix to be matched. For multiple values, use the ";" as delimiter (e.g. 'windows-2016-base;redhat-7-base')
 AMI_AGE|14|Number of days since the creation of the AMI 
-DRY_RUN|`true` / `false`| Whether to run the script in test mode.<br> `True` - will procceed with test mode <br> `False` - **will DELETE AMIs and Snapshots !**
+DRY_RUN|none| Whether to run the script in test mode.<br> `True` - will procceed with test mode <br> `False` - **will DELETE AMIs and Snapshots !**
 
 ## challenges
 ### lambda
