@@ -44,14 +44,13 @@ func main() {
 	// get environment vars
 	fmt.Println("## Environment Variables ##")
 	fmt.Printf("'AWS_REGION' is set to [%v]\n", awsRegion)
-	tagKey, tagValues, dryRun := getTags()
+	tagsMap, dryRun := getTags()
 	amiAge := getAmiAge()
 
 	// format inputs
 	// debug
 	fmt.Println("## AMI Filters ##")
-	fmt.Printf("tagKey: [%v]\n", tagKey)
-	input := formatInput(tagKey, tagValues, amiAge)
+	input := formatInput(tagsMap, amiAge)
 	ami, err := svcEc2.DescribeImages(input)
 	if err != nil {
 		fmt.Println("there was an error listing instances in", err.Error())
@@ -76,14 +75,78 @@ func main() {
 		}
 	}
 	fmt.Printf("Total Snapshots: %v\n", totalSnapshots)
-
+	fmt.Println("finalSnapshotMap:", finalSnapshotMap)
+	println()
 	// deregister image
 	fmt.Println("## Running Deregister Jobs ##")
 	deregisterAMI(svcEc2, finalSnapshotMap, dryRun)
+	println()
 	// delete snapshots
 	fmt.Println("## Running Deletion Jobs ##")
 	deleteSnapshots(svcEc2, finalSnapshotMap, dryRun)
 
+}
+
+func getTags() (tagsMap map[string]string, dryRun bool) {
+
+	tagsMap = map[string]string{}
+	envSlice := os.Environ()
+	for _, v := range envSlice {
+		if strings.Contains(v, "AmiTag_") {
+			fmt.Println("matched:", v)
+			tagSlice := strings.Split(v, "=")
+			tagValue := tagSlice[1]
+			tagKey := strings.Split(tagSlice[0], "_")[1]
+
+			tagsMap[tagKey] = tagValue
+		}
+	}
+	if len(tagsMap) == 0 {
+		log.Fatal("No 'AmiTag_*' entries are set")
+	}
+
+	dryRun, err := strconv.ParseBool(os.Getenv("DRY_RUN"))
+	if err != nil {
+		log.Fatal("'DRY_RUN' value is invalid. Valid entries are 'true' or 'false'\n", err.Error())
+	} else {
+		fmt.Printf("'DRY_RUN' of [%v] is set\n", dryRun)
+	}
+
+	return
+}
+
+// formatInput formats based on the tag key and values
+func formatInput(tagsMap map[string]string, amiAge int) (input *ec2.DescribeImagesInput) {
+	// format environment variables
+	var tagsFilter []*ec2.Filter
+
+	for k, v := range tagsMap {
+		var tagValueSlice []string
+		if strings.Contains(v, ";") {
+			for _, v := range strings.Split(v, ";") {
+				tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
+			}
+		} else {
+			tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
+		}
+		// fmt.Println("tagValueSlice:", tagValueSlice)
+
+		appendFilter := ec2.Filter{
+			Name:   aws.String("tag:" + k),
+			Values: aws.StringSlice(tagValueSlice),
+		}
+		tagsFilter = append(tagsFilter, &appendFilter)
+	}
+	fmt.Println("tagsFilter:", tagsFilter)
+
+	fmt.Printf("amiAge: [%d]\n\n", amiAge)
+	// format inputs
+	input = &ec2.DescribeImagesInput{
+		Owners: []*string{
+			aws.String("self"),
+		}, Filters: tagsFilter,
+	}
+	return
 }
 
 // func getLaunchConfigAMI(svcAutoScaling *autoscaling.AutoScaling) {
@@ -195,57 +258,5 @@ func getAmiAge() (amiAge int) {
 		fmt.Printf("'AMI_AGE' value of '%d' is set\n", amiAge)
 	}
 	println()
-	return
-}
-func getTags() (tagKey, tagValues string, dryRun bool) {
-
-	tagKey = os.Getenv("TAG_KEY")
-	if len(tagKey) == 0 {
-		fmt.Println("'TAG_KEY' is not set. Default value of 'name' is used")
-		tagKey = "name"
-	} else {
-		fmt.Printf("'TAG_KEY' of [%v] is set\n", tagKey)
-	}
-	tagValues = os.Getenv("TAG_VALUES")
-	if len(tagValues) == 0 {
-		fmt.Println("'TAG_VALUES' is not set. Default value of 'windows2016-base' is used")
-		tagValues = "windows2016-base"
-	} else {
-		fmt.Printf("'TAG_VALUES' of [%v] is set\n", tagValues)
-	}
-
-	dryRun, err := strconv.ParseBool(os.Getenv("DRY_RUN"))
-	if err != nil {
-		log.Fatal("'DRY_RUN' value is invalid. Valid entries are 'true' or 'false'\n", err.Error())
-	} else {
-		fmt.Printf("'DRY_RUN' of [%v] is set\n", dryRun)
-	}
-
-	return
-}
-
-// formatInput formats based on the tag key and values
-func formatInput(tagKey, tagValues string, amiAge int) (input *ec2.DescribeImagesInput) {
-	// format environment variables
-	tagKey = "tag:" + strings.TrimSpace(tagKey)
-	tagValueSlice := []string{}
-	for _, v := range strings.Split(tagValues, ";") {
-		tagValueSlice = append(tagValueSlice, strings.TrimSpace(v)+"*")
-	}
-	for i, v := range tagValueSlice {
-		fmt.Printf("tagValues[%d]:[%v]\n", i, v)
-	}
-	fmt.Printf("amiAge: [%d]\n\n", amiAge)
-	// format inputs
-	input = &ec2.DescribeImagesInput{
-		Owners: []*string{
-			aws.String("self"),
-		}, Filters: []*ec2.Filter{
-			&ec2.Filter{
-				Name:   aws.String(tagKey),
-				Values: aws.StringSlice(tagValueSlice),
-			},
-		},
-	}
 	return
 }
