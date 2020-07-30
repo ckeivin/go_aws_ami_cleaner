@@ -29,7 +29,7 @@ func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
 	}))
 
 	// Create new EC2 client
-	svc := ec2.New(sess)
+	svcEc2 := ec2.New(sess)
 	// get environment vars
 	fmt.Println("## Environment Variables ##")
 	fmt.Printf("'AWS_REGION' is set to [%v]\n", awsRegion)
@@ -41,7 +41,7 @@ func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
 	fmt.Println("## AMI Filters ##")
 	fmt.Printf("tagKey: [%v]\n", tagKey)
 	input := formatInput(tagKey, tagValues, amiAge)
-	ami, err := svc.DescribeImages(input)
+	ami, err := svcEc2.DescribeImages(input)
 	if err != nil {
 		fmt.Println("there was an error listing instances in", err.Error())
 		log.Fatal(err.Error())
@@ -68,7 +68,10 @@ func HandleRequest(ctx context.Context) (map[string]map[string]string, error) {
 
 	// deregister image
 	fmt.Println("## Running Deregister Jobs ##")
-	deregisterAMI(svc, finalSnapshotMap, dryRun)
+	deregisterAMI(svcEc2, finalSnapshotMap, dryRun)
+	// delete snapshots
+	fmt.Println("## Running Deletion Jobs ##")
+	deleteSnapshots(svcEc2, finalSnapshotMap, dryRun)
 	return finalSnapshotMap, nil
 }
 func main() {
@@ -76,7 +79,30 @@ func main() {
 
 }
 
-func deregisterAMI(svc *ec2.EC2, getFinalSnapshotMap map[string]map[string]string, dryRun bool) {
+func deleteSnapshots(svcEc2 *ec2.EC2, getFinalSnapshotMap map[string]map[string]string, dryRun bool) {
+	for _, v1 := range getFinalSnapshotMap {
+		for _, v2 := range v1 {
+			// create inputs
+			snapshotInput := &ec2.DeleteSnapshotInput{
+				DryRun:     &dryRun,
+				SnapshotId: aws.String(v2),
+			}
+			// delete snapshots
+			_, err := svcEc2.DeleteSnapshot(snapshotInput)
+			if err != nil {
+				fmt.Printf("[%v] - '%v'\n", *snapshotInput.SnapshotId, err.Error())
+				if strings.Contains(err.Error(), "DryRunOperation") {
+					continue
+				} else {
+					log.Fatal(err.Error())
+				}
+			} else {
+				fmt.Printf("[%v] - 'Snapshot is deleted'\n", *snapshotInput.SnapshotId)
+			}
+		}
+	}
+}
+func deregisterAMI(svcEc2 *ec2.EC2, getFinalSnapshotMap map[string]map[string]string, dryRun bool) {
 
 	for i := range getFinalSnapshotMap {
 		// create inputs
@@ -86,7 +112,7 @@ func deregisterAMI(svc *ec2.EC2, getFinalSnapshotMap map[string]map[string]strin
 		}
 		// fmt.Println(imageInput)
 		// deregister
-		_, err := svc.DeregisterImage(imageInput)
+		_, err := svcEc2.DeregisterImage(imageInput)
 		if err != nil {
 			fmt.Printf("[%v] - '%v'\n", *imageInput.ImageId, err.Error())
 			if strings.Contains(err.Error(), "DryRunOperation") {
@@ -94,6 +120,8 @@ func deregisterAMI(svc *ec2.EC2, getFinalSnapshotMap map[string]map[string]strin
 			} else {
 				log.Fatal(err.Error())
 			}
+		} else {
+			fmt.Printf("[%v] - 'AMI is deregistered'\n", *imageInput.ImageId)
 		}
 		// println()
 		// fmt.Println(deregister)
